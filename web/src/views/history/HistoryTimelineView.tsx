@@ -33,6 +33,7 @@ export default function HistoryTimelineView({
   const [focusedItem, setFocusedItem] = useState<Timeline | undefined>(
     undefined
   );
+  const [timeToSeek, setTimeToSeek] = useState<number | undefined>(undefined);
 
   const annotationOffset = useMemo(() => {
     if (!config) {
@@ -120,6 +121,33 @@ export default function HistoryTimelineView({
     [annotationOffset, recordings, playerRef]
   );
 
+  const onScrubTime = useCallback(
+    (data: { time: Date }) => {
+      if (!scrubbing) {
+        playerRef.current?.pause();
+        setScrubbing(true);
+      }
+
+      const seekTimestamp = data.time.getTime() / 1000;
+      const seekTime = seekTimestamp - playback.relevantPreview!!.start;
+      if (timeToSeek != undefined) {
+        setTimeToSeek(seekTime);
+      } else {
+        setTimeToSeek(seekTime);
+        previewRef.current?.currentTime(seekTime);
+      }
+    },
+    [playerRef, scrubbing, setTimeToSeek, timeToSeek]
+  );
+
+  const onSeeked = useCallback(() => {
+    if (timeToSeek && playerRef.current?.currentTime() != timeToSeek) {
+      playerRef.current?.currentTime(timeToSeek);
+    }
+
+    setTimeToSeek(undefined);
+  }, [setTimeToSeek, timeToSeek, playerRef]);
+
   if (!config || !recordings) {
     return <ActivityIndicator />;
   }
@@ -184,6 +212,7 @@ export default function HistoryTimelineView({
               seekOptions={{}}
               onReady={(player) => {
                 previewRef.current = player;
+                player.on("seeked", onSeeked);
               }}
               onDispose={() => {
                 previewRef.current = undefined;
@@ -199,17 +228,7 @@ export default function HistoryTimelineView({
               max: new Date(parseInt(playbackTimes.end) * 1000),
               snap: null,
             }}
-            timechangeHandler={(data) => {
-              if (!scrubbing) {
-                playerRef.current?.pause();
-                setScrubbing(true);
-              }
-
-              const seekTimestamp = data.time.getTime() / 1000;
-              previewRef.current?.currentTime(
-                seekTimestamp - playback.relevantPreview!!.start
-              );
-            }}
+            timechangeHandler={onScrubTime}
             timechangedHandler={(data) => {
               const playbackTime = data.time.getTime() / 1000;
               playerRef.current?.currentTime(
